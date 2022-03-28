@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"encoding/json"
 
 	"github.com/status-im/status-go/multiaccounts/errors"
 	"github.com/status-im/status-go/multiaccounts/settings"
@@ -87,6 +88,10 @@ func (m *Messenger) handleSyncSetting(response *MessengerResponse, syncSetting *
 	}
 	if err != nil {
 		return err
+	}
+
+	if v, ok := value.([]byte); ok {
+		value = json.RawMessage(v)
 	}
 
 	response.Settings = append(response.Settings, &settings.SyncSettingField{SettingField: sf, Value: value})
