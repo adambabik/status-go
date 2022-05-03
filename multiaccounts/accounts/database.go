@@ -30,6 +30,7 @@ type Account struct {
 	Hidden      bool           `json:"hidden"`
 	DerivedFrom string         `json:"derived-from,omitempty"`
 	Clock       uint64         `json:"clock"`
+	Removed     bool           `json:"removed"`
 }
 
 const (
@@ -50,7 +51,7 @@ func (a *Account) IsOwnAccount() bool {
 type Database struct {
 	*settings.Database
 	db                   *sql.DB
-	accountSubscriptions []chan struct{}
+	accountSubscriptions []chan []*Account
 }
 
 // NewDB returns a new instance of *Database
@@ -118,6 +119,7 @@ func (db *Database) SaveAccounts(accounts []*Account) (err error) {
 	var (
 		tx     *sql.Tx
 		insert *sql.Stmt
+		delete *sql.Stmt
 		update *sql.Stmt
 	)
 	tx, err = db.db.Begin()
@@ -137,12 +139,20 @@ func (db *Database) SaveAccounts(accounts []*Account) (err error) {
 	if err != nil {
 		return err
 	}
+	delete, err = tx.Prepare("DELETE FROM accounts WHERE address = ?")
 	update, err = tx.Prepare("UPDATE accounts SET wallet = ?, chat = ?, type = ?, storage = ?, pubkey = ?, path = ?, name = ?,  emoji = ?, color = ?, hidden = ?, derived_from = ?, updated_at = datetime('now'), clock = ? WHERE address = ?")
 	if err != nil {
 		return err
 	}
 	for i := range accounts {
 		acc := accounts[i]
+		if acc.Removed {
+			_, err = delete.Exec(acc.Address)
+			if err != nil {
+				return
+			}
+			continue
+		}
 		_, err = insert.Exec(acc.Address)
 		if err != nil {
 			return
@@ -164,30 +174,47 @@ func (db *Database) SaveAccounts(accounts []*Account) (err error) {
 func (db *Database) SaveAccountsAndPublish(accounts []*Account) (err error) {
 	err = db.SaveAccounts(accounts)
 	if err == nil {
-		db.publishOnAccountSubscriptions()
+		db.publishOnAccountSubscriptions(accounts)
 	}
 	return err
 }
 
-func (db *Database) SubscribeToAccountChanges() chan struct{} {
-	s := make(chan struct{}, 100)
+func (db *Database) SubscribeToAccountChanges() chan []*Account {
+	s := make(chan []*Account, 100)
 	db.accountSubscriptions = append(db.accountSubscriptions, s)
 	return s
 }
 
-func (db *Database) publishOnAccountSubscriptions() {
+func (db *Database) publishOnAccountSubscriptions(accounts []*Account) {
 	// Publish on channels, drop if buffer is full
 	for _, s := range db.accountSubscriptions {
 		select {
-		case s <- struct{}{}:
+		case s <- accounts:
 		default:
 			log.Warn("subscription channel full, dropping message")
 		}
 	}
 }
+
 func (db *Database) DeleteAccount(address types.Address) error {
 	_, err := db.db.Exec("DELETE FROM accounts WHERE address = ?", address)
 	return err
+}
+
+func (db *Database) DeleteAccountAndPublish(address types.Address) error {
+	acc, err := db.GetAccountByAddress(address)
+	if err != nil {
+		return err
+	}
+	err = db.DeleteAccount(address)
+
+	if err != nil {
+		return err
+	}
+	acc.Removed = true
+	db.publishOnAccountSubscriptions([]*Account{acc})
+
+	return nil
 }
 
 func (db *Database) DeleteSeedAndKeyAccounts() error {

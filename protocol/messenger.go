@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"log/syslog"
 	"math"
 	"math/rand"
 	"os"
@@ -26,6 +28,7 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	gethcommon "github.com/ethereum/go-ethereum/common"
+	ethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/status-im/status-go/appdatabase"
 	"github.com/status-im/status-go/appmetrics"
@@ -105,6 +108,7 @@ type Messenger struct {
 	pushNotificationServer     *pushnotificationserver.Server
 	communitiesManager         *communities.Manager
 	logger                     *zap.Logger
+	syslogger                  *log.Logger
 	verifyTransactionClient    EthClient
 	featureFlags               common.FeatureFlags
 	shutdownTasks              []func() error
@@ -225,6 +229,7 @@ func NewMessenger(
 		}
 	}
 
+	syslogger, _ := syslog.NewLogger(syslog.LOG_INFO, log.LstdFlags)
 	logger := c.logger
 	if c.logger == nil {
 		var err error
@@ -448,7 +453,8 @@ func NewMessenger(
 			func() error { _ = logger.Sync; return nil },
 			database.Close,
 		},
-		logger: logger,
+		logger:    logger,
+		syslogger: syslogger,
 	}
 
 	if anonMetricsClient != nil {
@@ -465,6 +471,8 @@ func NewMessenger(
 			logger.Info("Unable to set envelopes event handler", zap.Error(err))
 		}
 	}
+
+	syslogger.Print("### Messenger.New")
 
 	return messenger, nil
 }
@@ -2626,6 +2634,8 @@ func (m *Messenger) syncProfilePictures() error {
 func (m *Messenger) SyncDevices(ctx context.Context, ensName, photoPath string) (err error) {
 	myID := contactIDFromPublicKey(&m.identity.PublicKey)
 
+	ethlog.Info("### syncDevices")
+
 	displayName, err := m.settings.DisplayName()
 	if err != nil {
 		return err
@@ -2718,7 +2728,11 @@ func (m *Messenger) SyncDevices(ctx context.Context, ensName, photoPath string) 
 		return err
 	}
 
-	return m.syncWallets()
+	accounts, err := m.settings.GetAccounts()
+	if err != nil {
+		return err
+	}
+	return m.syncWallets(accounts)
 }
 
 // Sync wallets in case of account changes
@@ -2733,8 +2747,12 @@ func (m *Messenger) watchAccountListChanges() {
 	go func() {
 		for {
 			select {
-			case <-channel:
-				err := m.syncWallets()
+			case accounts := <-channel:
+				m.syslogger.Print("### Inside watchAccountListChanges")
+				m.syslogger.Printf("### Inside watchAccountListChanges 1 %d", len(accounts))
+				ethlog.Info("### Inside watchAccountListChanges")
+				ethlog.Info("### Inside watchAccountListChanges 1 ", len(accounts))
+				err := m.syncWallets(accounts)
 				if err != nil {
 					m.logger.Error("failed to sync wallet accounts to paired devices", zap.Error(err))
 				}
@@ -2746,23 +2764,20 @@ func (m *Messenger) watchAccountListChanges() {
 }
 
 // syncWallets syncs all wallets with paired devices
-func (m *Messenger) syncWallets() error {
+func (m *Messenger) syncWallets(accs []*accounts.Account) error {
 	if !m.hasPairedDevices() {
 		return nil
-	}
-	localAccounts, err := m.settings.GetAccounts()
-
-	if err != nil {
-		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	clock, chat := m.getLastClockWithRelatedChat()
+	m.syslogger.Printf("### syncWallets %d", len(accs))
+	ethlog.Info("### syncWallets ", len(accs))
 
 	accountMessages := make([]*protobuf.SyncWalletAccount, 0)
-	for _, acc := range localAccounts {
+	for _, acc := range accs {
 		// Only sync watch type accounts
 		if acc.Type != accounts.AccountTypeWatch {
 			continue
@@ -2786,10 +2801,12 @@ func (m *Messenger) syncWallets() error {
 			Name:      acc.Name,
 			Color:     acc.Color,
 			Hidden:    acc.Hidden,
+			Removed:   acc.Removed,
 		}
 		accountMessages = append(accountMessages, syncMessage)
 	}
 
+	ethlog.Info("### syncWallets 1", len(accountMessages))
 	message := &protobuf.SyncWalletAccounts{
 		Accounts: accountMessages,
 	}

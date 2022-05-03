@@ -1657,38 +1657,49 @@ func (m *Messenger) HandleSyncWalletAccount(state *ReceivedMessageState, message
 	for _, acc := range dbAccounts {
 		dbAccountMap[acc.Address] = acc
 	}
-	accs := make([]*accounts.Account, len(message.Accounts))
-	i := 0
+
+	var accs []*accounts.Account
 	for _, message := range message.Accounts {
 		dbAcc := dbAccountMap[types.BytesToAddress(message.Address)]
 		if dbAcc != nil && message.Clock <= dbAcc.Clock {
 			continue
 		}
-		acc := &accounts.Account{
-			Address:   types.BytesToAddress(message.Address),
-			Wallet:    message.Wallet,
-			Chat:      message.Chat,
-			Type:      message.Type,
-			Storage:   message.Storage,
-			PublicKey: types.HexBytes(message.PublicKey),
-			Path:      message.Path,
-			Color:     message.Color,
-			Hidden:    message.Hidden,
-			Name:      message.Name,
-			Clock:     message.Clock,
-		}
+		var acc *accounts.Account
+		if dbAcc != nil && message.Removed {
+			acc = &accounts.Account{
+				Address: types.BytesToAddress(message.Address),
+				Removed: true,
+			}
+		} else if !message.Removed {
+			acc = &accounts.Account{
+				Address:   types.BytesToAddress(message.Address),
+				Wallet:    message.Wallet,
+				Chat:      message.Chat,
+				Type:      message.Type,
+				Storage:   message.Storage,
+				PublicKey: types.HexBytes(message.PublicKey),
+				Path:      message.Path,
+				Color:     message.Color,
+				Hidden:    message.Hidden,
+				Name:      message.Name,
+				Clock:     message.Clock,
+			}
 
-		accs[i] = acc
-		i++
+		}
+		accs = append(accs, acc)
 	}
 
-	if i == 0 {
+	if len(accs) == 0 {
 		return nil
 	}
 
-	err = m.settings.SaveAccounts(accs[:i])
+	err = m.settings.SaveAccounts(accs)
+	if err != nil {
+		return err
+	}
+
 	if err == nil {
-		state.Response.Accounts = accs[:i]
+		state.Response.Accounts = accs
 	}
 
 	return err

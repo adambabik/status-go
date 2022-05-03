@@ -135,7 +135,6 @@ message SyncProfilePictures {
   repeated SyncProfilePicture pictures = 2;
 }
 
-// Should I duplicate this struct for sender and receiver as there are differnts of SyncActivityCenter*
 message SyncWalletAccount {
   uint64 clock = 1;
 	bytes address = 2;
@@ -148,6 +147,7 @@ message SyncWalletAccount {
 	string name = 9;
 	string color = 10;
 	bool hidden = 11;
+  bool removed = 12;
 }
 
 message SyncWalletAccounts {
