@@ -38,18 +38,14 @@ type DerivedAddress struct {
 	HasActivity bool           `json:"hasActivity"`
 }
 
-func (api *API) SaveAccounts(ctx context.Context, accs []*accounts.Account) error {
+func (api *API) SaveAccounts(ctx context.Context, accounts []*accounts.Account) error {
 	log.Info("[AccountsAPI::SaveAccounts]")
 	log.Info("### SaveAccounts")
-	err := api.db.SaveAccountsAndPublish(accs)
+	err := api.db.SaveAccountsAndPublish(accounts)
 	if err != nil {
 		return err
 	}
-	accountObjs := make([]accounts.Account, len(accs))
-	for i := range accs {
-		accountObjs[i] = *accs[i]
-	}
-	api.feed.Send(accountObjs)
+	api.feed.Send(accounts)
 	return nil
 }
 

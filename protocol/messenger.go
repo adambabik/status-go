@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
-	"log"
-	"log/syslog"
 	"math"
 	"math/rand"
 	"os"
@@ -108,7 +106,6 @@ type Messenger struct {
 	pushNotificationServer     *pushnotificationserver.Server
 	communitiesManager         *communities.Manager
 	logger                     *zap.Logger
-	syslogger                  *log.Logger
 	verifyTransactionClient    EthClient
 	featureFlags               common.FeatureFlags
 	shutdownTasks              []func() error
@@ -229,7 +226,6 @@ func NewMessenger(
 		}
 	}
 
-	syslogger, _ := syslog.NewLogger(syslog.LOG_INFO, log.LstdFlags)
 	logger := c.logger
 	if c.logger == nil {
 		var err error
@@ -453,8 +449,7 @@ func NewMessenger(
 			func() error { _ = logger.Sync; return nil },
 			database.Close,
 		},
-		logger:    logger,
-		syslogger: syslogger,
+		logger: logger,
 	}
 
 	if anonMetricsClient != nil {
@@ -471,8 +466,6 @@ func NewMessenger(
 			logger.Info("Unable to set envelopes event handler", zap.Error(err))
 		}
 	}
-
-	syslogger.Print("### Messenger.New")
 
 	return messenger, nil
 }
@@ -2732,27 +2725,24 @@ func (m *Messenger) SyncDevices(ctx context.Context, ensName, photoPath string) 
 	if err != nil {
 		return err
 	}
-	return m.syncWallets(accounts)
+	return m.syncWallets(accounts, false)
 }
 
 // Sync wallets in case of account changes
 func (m *Messenger) watchAccountListChanges() {
 	m.logger.Debug("watching account changes")
-	if m.multiAccounts == nil {
-		return
-	}
+	ethlog.Info("### IN watchAccountListChanges")
 
 	channel := m.settings.SubscribeToAccountChanges()
 
+	ethlog.Info("### IN watchAccountListChanges after subscribe")
 	go func() {
 		for {
 			select {
 			case accounts := <-channel:
-				m.syslogger.Print("### Inside watchAccountListChanges")
-				m.syslogger.Printf("### Inside watchAccountListChanges 1 %d", len(accounts))
 				ethlog.Info("### Inside watchAccountListChanges")
-				ethlog.Info("### Inside watchAccountListChanges 1 ", len(accounts))
-				err := m.syncWallets(accounts)
+				ethlog.Info("### Inside watchAccountListChanges 1 ", "len", len(accounts))
+				err := m.syncWallets(accounts, true)
 				if err != nil {
 					m.logger.Error("failed to sync wallet accounts to paired devices", zap.Error(err))
 				}
@@ -2764,7 +2754,7 @@ func (m *Messenger) watchAccountListChanges() {
 }
 
 // syncWallets syncs all wallets with paired devices
-func (m *Messenger) syncWallets(accs []*accounts.Account) error {
+func (m *Messenger) syncWallets(accs []*accounts.Account, incremental bool) error {
 	if !m.hasPairedDevices() {
 		return nil
 	}
@@ -2773,13 +2763,14 @@ func (m *Messenger) syncWallets(accs []*accounts.Account) error {
 	defer cancel()
 
 	clock, chat := m.getLastClockWithRelatedChat()
-	m.syslogger.Printf("### syncWallets %d", len(accs))
-	ethlog.Info("### syncWallets ", len(accs))
+	ethlog.Info("### syncWallets", "len", len(accs))
 
 	accountMessages := make([]*protobuf.SyncWalletAccount, 0)
 	for _, acc := range accs {
 		// Only sync watch type accounts
+		ethlog.Info("### syncWallets in for range", "name", acc.Name, "type", acc.Type)
 		if acc.Type != accounts.AccountTypeWatch {
+			ethlog.Info("### syncWallets continue")
 			continue
 		}
 
@@ -2806,9 +2797,10 @@ func (m *Messenger) syncWallets(accs []*accounts.Account) error {
 		accountMessages = append(accountMessages, syncMessage)
 	}
 
-	ethlog.Info("### syncWallets 1", len(accountMessages))
+	ethlog.Info("### syncWallets 1", "len", len(accountMessages))
 	message := &protobuf.SyncWalletAccounts{
-		Accounts: accountMessages,
+		Accounts:    accountMessages,
+		Incremental: incremental,
 	}
 
 	encodedMessage, err := proto.Marshal(message)

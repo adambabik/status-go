@@ -152,4 +152,5 @@ message SyncWalletAccount {
 
 message SyncWalletAccounts {
   repeated SyncWalletAccount accounts = 1;
+  bool incremental = 1;
 }

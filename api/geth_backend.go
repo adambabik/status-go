@@ -854,7 +854,7 @@ func (b *GethStatusBackend) CallRPC(inputJSON string) (string, error) {
 // CallPrivateRPC executes public and private RPC requests on node's in-proc RPC server.
 func (b *GethStatusBackend) CallPrivateRPC(inputJSON string) (string, error) {
 	client := b.statusNode.RPCClient()
-	b.log.Info("### backend.CallPrivateRPC")
+	b.log.Info("backend.CallPrivateRPC")
 	if client == nil {
 		return "", ErrRPCClientUnavailable
 	}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/ethereum/go-ethereum/log"
+	ethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/status-im/status-go/eth-node/types"
 	"github.com/status-im/status-go/multiaccounts/errors"
 	"github.com/status-im/status-go/multiaccounts/settings"
@@ -47,11 +48,12 @@ func (a *Account) IsOwnAccount() bool {
 	return a.Wallet || a.Type == accountTypeSeed || a.Type == accountTypeGenerated || a.Type == accountTypeKey
 }
 
+var accountSubscriptions []chan []*Account
+
 // Database sql wrapper for operations with browser objects.
 type Database struct {
 	*settings.Database
-	db                   *sql.DB
-	accountSubscriptions []chan []*Account
+	db *sql.DB
 }
 
 // NewDB returns a new instance of *Database
@@ -61,7 +63,7 @@ func NewDB(db *sql.DB) (*Database, error) {
 		return nil, err
 	}
 
-	return &Database{sDB, db, nil}, nil
+	return &Database{sDB, db}, nil
 }
 
 // DB Gets db sql.DB
@@ -181,13 +183,16 @@ func (db *Database) SaveAccountsAndPublish(accounts []*Account) (err error) {
 
 func (db *Database) SubscribeToAccountChanges() chan []*Account {
 	s := make(chan []*Account, 100)
-	db.accountSubscriptions = append(db.accountSubscriptions, s)
+	accountSubscriptions = append(accountSubscriptions, s)
+	ethlog.Info("### SubscribeToAccountChanges", "subLen", len(accountSubscriptions), "addr", db)
 	return s
 }
 
 func (db *Database) publishOnAccountSubscriptions(accounts []*Account) {
 	// Publish on channels, drop if buffer is full
-	for _, s := range db.accountSubscriptions {
+
+	ethlog.Info("### publishOnAccountSubscriptions", "accountLen", len(accounts), "subLen", len(accountSubscriptions), "addr", db)
+	for _, s := range accountSubscriptions {
 		select {
 		case s <- accounts:
 		default:
