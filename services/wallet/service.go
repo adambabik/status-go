@@ -8,12 +8,14 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 
+	"github.com/status-im/status-go/account"
+	"github.com/status-im/status-go/multiaccounts/accounts"
 	"github.com/status-im/status-go/rpc"
 	"github.com/status-im/status-go/services/wallet/transfer"
 )
 
 // NewService initializes service instance.
-func NewService(db *sql.DB, rpcClient *rpc.Client, accountFeed *event.Feed, openseaAPIKey string) *Service {
+func NewService(db *sql.DB, rpcClient *rpc.Client, accountFeed *event.Feed, openseaAPIKey string, gethManager *account.GethManager, accountsDB *accounts.Database) *Service {
 	cryptoOnRampManager := NewCryptoOnRampManager(&CryptoOnRampOptions{
 		dataSourceType: DataSourceStatic,
 	})
@@ -33,6 +35,8 @@ func NewService(db *sql.DB, rpcClient *rpc.Client, accountFeed *event.Feed, open
 		cryptoOnRampManager:   cryptoOnRampManager,
 		openseaAPIKey:         openseaAPIKey,
 		feesManager:           &FeeManager{rpcClient},
+		gethManager:           gethManager,
+		db:                    accountsDB,
 	}
 }
 
@@ -48,6 +52,8 @@ type Service struct {
 	feesManager           *FeeManager
 	started               bool
 	openseaAPIKey         string
+	gethManager           *account.GethManager
+	db                    *accounts.Database
 }
 
 // Start signals transmitter.

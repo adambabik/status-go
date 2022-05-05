@@ -124,7 +124,7 @@ func (b *StatusNode) initServices(config *params.NodeConfig) error {
 		if len(openseaKey) == 0 {
 			openseaKey = OpenseaKeyFromEnv
 		}
-		walletService := b.walletService(accountsFeed, openseaKey)
+		walletService := b.walletService(accountsFeed, openseaKey, accDB)
 		services = append(services, walletService)
 	}
 
@@ -441,9 +441,9 @@ func (b *StatusNode) appmetricsService() common.StatusService {
 	return b.appMetricsSrvc
 }
 
-func (b *StatusNode) walletService(accountsFeed *event.Feed, openseaAPIKey string) common.StatusService {
+func (b *StatusNode) walletService(accountsFeed *event.Feed, openseaAPIKey string, accountsDB *accounts.Database) common.StatusService {
 	if b.walletSrvc == nil {
-		b.walletSrvc = wallet.NewService(b.appDB, b.rpcClient, accountsFeed, openseaAPIKey)
+		b.walletSrvc = wallet.NewService(b.appDB, b.rpcClient, accountsFeed, openseaAPIKey, b.gethAccountManager, accountsDB)
 	}
 	return b.walletSrvc
 }
