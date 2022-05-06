@@ -2725,7 +2725,7 @@ func (m *Messenger) SyncDevices(ctx context.Context, ensName, photoPath string) 
 	if err != nil {
 		return err
 	}
-	return m.syncWallets(accounts, false)
+	return m.syncWallets(accounts)
 }
 
 // Sync wallets in case of account changes
@@ -2742,7 +2742,7 @@ func (m *Messenger) watchAccountListChanges() {
 			case accounts := <-channel:
 				ethlog.Info("### Inside watchAccountListChanges")
 				ethlog.Info("### Inside watchAccountListChanges 1 ", "len", len(accounts))
-				err := m.syncWallets(accounts, true)
+				err := m.syncWallets(accounts)
 				if err != nil {
 					m.logger.Error("failed to sync wallet accounts to paired devices", zap.Error(err))
 				}
@@ -2754,7 +2754,7 @@ func (m *Messenger) watchAccountListChanges() {
 }
 
 // syncWallets syncs all wallets with paired devices
-func (m *Messenger) syncWallets(accs []*accounts.Account, incremental bool) error {
+func (m *Messenger) syncWallets(accs []*accounts.Account) error {
 	if !m.hasPairedDevices() {
 		return nil
 	}
@@ -2799,8 +2799,7 @@ func (m *Messenger) syncWallets(accs []*accounts.Account, incremental bool) erro
 
 	ethlog.Info("### syncWallets 1", "len", len(accountMessages))
 	message := &protobuf.SyncWalletAccounts{
-		Accounts:    accountMessages,
-		Incremental: incremental,
+		Accounts: accountMessages,
 	}
 
 	encodedMessage, err := proto.Marshal(message)

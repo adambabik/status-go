@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	ethlog "github.com/ethereum/go-ethereum/log"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 
@@ -1658,6 +1659,7 @@ func (m *Messenger) HandleSyncWalletAccount(state *ReceivedMessageState, message
 		dbAccountMap[acc.Address] = acc
 	}
 
+	ethlog.Info("### HandleSyncWalletAccount", "len", len(message.Accounts))
 	var accs []*accounts.Account
 	for _, message := range message.Accounts {
 		dbAcc := dbAccountMap[types.BytesToAddress(message.Address)]
